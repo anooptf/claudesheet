@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>QuickSheet</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --border: #d0d0d0;
+  --border-dark: #aaa;
+  --header-bg: #f0f0f0;
+  --header-text: #444;
+  --text: #111;
+  --selected-bg: #cce5ff;
+  --selected-border: #1a73e8;
+  --anchor-bg: #e8f4ff;
+  --status-bg: #f7f7f7;
+  --status-border: #ddd;
+  --error: #cc0000;
+  --mono: 'Courier New', monospace;
+  --sans: 'Segoe UI', Arial, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #e8e8e8;
+  font-family: var(--sans);
+  font-size: 13px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--text);
+}
+
+/* TOP BAR */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 10px;
+  background: #fff;
+  border-bottom: 1px solid var(--border-dark);
+  flex-shrink: 0;
+}
+#logo {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a73e8;
+  letter-spacing: 1px;
+}
+#selref {
+  font-size: 12px;
+  color: #555;
+  font-family: var(--mono);
+  min-width: 80px;
+}
+#hintbar {
+  font-size: 11px;
+  color: #888;
+  flex: 1;
+}
+#hintbar b { color: #444; font-weight: 600; }
+#clearbtn {
+  background: #fff;
+  border: 1px solid #ccc;
+  color: #c00;
+  padding: 3px 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: var(--sans);
+}
+#clearbtn:hover { background: #fff0f0; border-color: #c00; }
+
+/* GRID WRAP */
+#gridwrap {
+  flex: 1;
+  overflow: auto;
+  background: #e8e8e8;
+}
+
+/* TABLE */
+table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: var(--surface);
+}
+th, td { border: 1px solid var(--border); padding: 0; }
+
+th.corner {
+  width: 46px; min-width: 46px;
+  background: var(--header-bg);
+  position: sticky; top: 0; left: 0; z-index: 4;
+  border-color: var(--border-dark);
+}
+th.colh {
+  width: 96px; min-width: 96px;
+  background: var(--header-bg);
+  color: var(--header-text);
+  font-size: 11px; font-weight: 600;
+  text-align: center; padding: 3px 0;
+  position: sticky; top: 0; z-index: 3;
+  user-select: none; cursor: default;
+  border-color: var(--border-dark);
+}
+th.colh.sel { background: #c8dcf8; color: #1a73e8; }
+td.rowh {
+  width: 46px; min-width: 46px;
+  background: var(--header-bg);
+  color: var(--header-text);
+  font-size: 11px; text-align: center;
+  padding: 0 4px;
+  position: sticky; left: 0; z-index: 2;
+  user-select: none; cursor: default;
+  border-color: var(--border-dark);
+}
+td.rowh.sel { background: #c8dcf8; color: #1a73e8; }
+
+td.cell {
+  width: 96px; min-width: 96px;
+  height: 22px;
+  background: var(--surface);
+  cursor: cell;
+  position: relative;
+}
+td.cell.insel { background: var(--selected-bg); }
+td.cell.anchor {
+  background: var(--anchor-bg);
+  outline: 2px solid var(--selected-border);
+  outline-offset: -1px;
+  z-index: 1;
+}
+td.cell .disp {
+  display: block;
+  width: 100%; height: 100%;
+  padding: 2px 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+  line-height: 18px;
+  user-select: none;
+  pointer-events: none;
+}
+td.cell .disp.txt { text-align: left; }
+td.cell .disp.err { color: var(--error); text-align: left; }
+td.cell input.cedit {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  background: #fff;
+  border: 2px solid var(--selected-border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 2px 4px;
+  outline: none; z-index: 10;
+}
+
+/* STATUS BAR */
+#statusbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  background: var(--status-bg);
+  border-top: 1px solid var(--status-border);
+  flex-shrink: 0;
+  height: 26px;
+  font-size: 12px;
+}
+.stat {
+  padding: 4px 14px;
+  border-right: 1px solid var(--status-border);
+  color: #333;
+  white-space: nowrap;
+}
+.stat b { color: #1a73e8; font-weight: 600; }
+#stat-empty {
+  padding: 4px 14px;
+  color: #aaa;
+  font-size: 11px;
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="logo">QSHEET</div>
+  <div id="selref">A1</div>
+  <div id="hintbar">
+    <b>Click</b> select &nbsp;|&nbsp;
+    <b>Shift+Click / Drag</b> range &nbsp;|&nbsp;
+    <b>Ctrl+C</b> copy &nbsp;|&nbsp;
+    <b>Ctrl+V</b> paste &nbsp;|&nbsp;
+    <b>Del</b> clear &nbsp;|&nbsp;
+    <b>Enter/F2</b> edit &nbsp;|&nbsp;
+    Formulas start with <b>=</b>
+  </div>
+  <button id="clearbtn">CLEAR ALL</button>
+</div>
+
+<div id="gridwrap">
+  <table id="grid"></table>
+</div>
+
+<div id="statusbar">
+  <div id="stat-empty">Select cells to see statistics</div>
+</div>
+
+<script>
+const ROWS = 100, COLS = 26;
+const colName = c => String.fromCharCode(65 + c);
+const cellId = (r, c) => colName(c) + (r + 1);
+
+const data = Array.from({length: ROWS}, () => Array(COLS).fill(''));
+const computed = Array.from({length: ROWS}, () => Array(COLS).fill(''));
+
+// Selection state
+let anchorR = 0, anchorC = 0;
+let selR = 0, selC = 0; // current end of selection
+let editing = false;
+let editInput = null;
+let mouseDown = false;
+
+const selMin = () => [Math.min(anchorR, selR), Math.min(anchorC, selC)];
+const selMax = () => [Math.max(anchorR, selR), Math.max(anchorC, selC)];
+const inSel = (r, c) => {
+  const [r1, c1] = selMin(), [r2, c2] = selMax();
+  return r >= r1 && r <= r2 && c >= c1 && c <= c2;
+};
+
+// Build table
+const grid = document.getElementById('grid');
+const tbody = document.createElement('tbody');
+
+const headRow = document.createElement('tr');
+const corner = document.createElement('th'); corner.className = 'corner';
+headRow.appendChild(corner);
+for (let c = 0; c < COLS; c++) {
+  const th = document.createElement('th');
+  th.className = 'colh'; th.id = 'ch' + c;
+  th.textContent = colName(c);
+  headRow.appendChild(th);
+}
+tbody.appendChild(headRow);
+
+const cells = [];
+for (let r = 0; r < ROWS; r++) {
+  cells[r] = [];
+  const tr = document.createElement('tr');
+  const rh = document.createElement('td');
+  rh.className = 'rowh'; rh.id = 'rh' + r;
+  rh.textContent = r + 1;
+  tr.appendChild(rh);
+  for (let c = 0; c < COLS; c++) {
+    const td = document.createElement('td');
+    td.className = 'cell';
+    td.dataset.r = r; td.dataset.c = c;
+    const span = document.createElement('span');
+    span.className = 'disp';
+    td.appendChild(span);
+
+    td.addEventListener('mousedown', e => {
+      if (e.target.tagName === 'INPUT') return;
+      if (editing) commitEdit();
+      mouseDown = true;
+      if (e.shiftKey) {
+        selR = r; selC = c;
+      } else {
+        anchorR = r; anchorC = c;
+        selR = r; selC = c;
+      }
+      renderSelection();
+      e.preventDefault();
+    });
+    td.addEventListener('mouseover', e => {
+      if (!mouseDown) return;
+      selR = r; selC = c;
+      renderSelection();
+    });
+    td.addEventListener('dblclick', () => { if (!editing) startEdit(); });
+
+    tr.appendChild(td);
+    cells[r][c] = td;
+  }
+  tbody.appendChild(tr);
+}
+grid.appendChild(tbody);
+
+document.addEventListener('mouseup', () => { mouseDown = false; });
+
+// Ref parsing
+function parseRef(ref) {
+  const m = ref.match(/^([A-Z]+)(\d+)$/i);
+  if (!m) return null;
+  const col = m[1].toUpperCase().split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+  const row = parseInt(m[2]) - 1;
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return null;
+  return [row, col];
+}
+
+function getNumVal(r, c) {
+  const v = computed[r][c];
+  if (v === '' || v === null || v === undefined) return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+function computeCell(r, c, visited) {
+  const key = r + ',' + c;
+  if (visited.has(key)) return '#CIRC';
+  const raw = data[r][c];
+  if (!raw) return '';
+  if (!raw.startsWith('=')) {
+    const n = Number(raw);
+    return isNaN(n) ? raw : n;
+  }
+  const v2 = new Set(visited); v2.add(key);
+  try {
+    return evalFormula(raw.slice(1), v2);
+  } catch(e) {
+    return '#ERR: ' + (e.message || '');
+  }
+}
+
+function evalFormula(expr, visited) {
+  const strings = [];
+  let s = expr.trim().replace(/"([^"]*)"/g, (_, v) => { strings.push(v); return '__S' + (strings.length-1) + '__'; });
+
+  function resolveRef(ref) {
+    const pos = parseRef(ref);
+    if (!pos) throw new Error('REF');
+    if (visited.has(pos[0]+','+pos[1])) throw new Error('CIRC');
+    const v2 = new Set(visited); v2.add(pos[0]+','+pos[1]);
+    const res = computeCell(pos[0], pos[1], v2);
+    if (typeof res === 'string' && res.startsWith('#')) throw new Error(res);
+    return res;
+  }
+
+  function expandRange(ref1, ref2) {
+    const p1 = parseRef(ref1), p2 = parseRef(ref2);
+    if (!p1 || !p2) throw new Error('REF');
+    const nums = [];
+    for (let r = Math.min(p1[0],p2[0]); r <= Math.max(p1[0],p2[0]); r++)
+      for (let c = Math.min(p1[1],p2[1]); c <= Math.max(p1[1],p2[1]); c++) {
+        const v = getNumVal(r, c);
+        if (v !== null) nums.push(v);
+      }
+    return nums;
+  }
+
+  function splitArgs(str) {
+    const args = []; let depth = 0, cur = '';
+    for (const ch of str) {
+      if (ch === '(') depth++;
+      else if (ch === ')') depth--;
+      if (ch === ',' && depth === 0) { args.push(cur); cur = ''; } else cur += ch;
+    }
+    if (cur) args.push(cur);
+    return args;
+  }
+
+  function parseArgNums(argsStr) {
+    const nums = [];
+    for (const tok of splitArgs(argsStr)) {
+      const t = tok.trim();
+      const rm = t.match(/^([A-Z]+\d+):([A-Z]+\d+)$/i);
+      if (rm) { nums.push(...expandRange(rm[1], rm[2])); }
+      else if (/^[A-Z]+\d+$/i.test(t)) { const v = resolveRef(t); if (typeof v === 'number') nums.push(v); }
+      else { const v = evalExpr(t); if (typeof v === 'number') nums.push(v); }
+    }
+    return nums;
+  }
+
+  function applyFunc(name, argsStr) {
+    const n = name.toUpperCase();
+    if (n === 'IF') {
+      const parts = splitArgs(argsStr);
+      if (parts.length < 3) throw new Error('IF needs 3 args');
+      const cond = evalExpr(parts[0]);
+      return cond ? evalExpr(parts[1]) : evalExpr(parts[2]);
+    }
+    if (n === 'PI') return Math.PI;
+    if (n === 'E') return Math.E;
+    const nums = parseArgNums(argsStr);
+    switch(n) {
+      case 'SUM': return nums.reduce((a,b) => a+b, 0);
+      case 'AVG': case 'AVERAGE': return nums.reduce((a,b) => a+b, 0) / nums.length;
+      case 'MIN': return Math.min(...nums);
+      case 'MAX': return Math.max(...nums);
+      case 'COUNT': return nums.length;
+      case 'ABS': return Math.abs(nums[0]);
+      case 'SQRT': return Math.sqrt(nums[0]);
+      case 'ROUND': return Math.round(nums[0] * 10**(nums[1]||0)) / 10**(nums[1]||0);
+      case 'CEIL': return Math.ceil(nums[0]);
+      case 'FLOOR': return Math.floor(nums[0]);
+      case 'MOD': return nums[0] % nums[1];
+      case 'POWER': return Math.pow(nums[0], nums[1]);
+      case 'LOG': return nums.length > 1 ? Math.log(nums[0])/Math.log(nums[1]) : Math.log10(nums[0]);
+      case 'LN': return Math.log(nums[0]);
+      case 'SIN': return Math.sin(nums[0]);
+      case 'COS': return Math.cos(nums[0]);
+      case 'TAN': return Math.tan(nums[0]);
+      case 'STDEV': {
+        const mean = nums.reduce((a,b)=>a+b,0)/nums.length;
+        return Math.sqrt(nums.reduce((a,b)=>a+(b-mean)**2,0)/nums.length);
+      }
+      case 'PRODUCT': return nums.reduce((a,b)=>a*b,1);
+      default: throw new Error('Unknown function: ' + name);
+    }
+  }
+
+  function evalExpr(expr) {
+    let s = expr.trim();
+    s = s.replace(/__S(\d+)__/g, (_, i) => JSON.stringify(strings[parseInt(i)]));
+    // Functions (handle nested)
+    let prev;
+    do {
+      prev = s;
+      s = s.replace(/([A-Z_]+)\(([^()]*)\)/gi, (full, fname, fargs) => {
+        if (!/^[A-Z]+$/i.test(fname)) return full;
+        const res = applyFunc(fname, fargs);
+        return typeof res === 'string' ? JSON.stringify(res) : String(res);
+      });
+    } while (s !== prev);
+    // Cell refs
+    s = s.replace(/\b([A-Z]+\d+)\b/gi, (_, ref) => {
+      const v = resolveRef(ref);
+      return typeof v === 'string' ? JSON.stringify(v) : String(v === '' ? 0 : v);
+    });
+    s = s.replace(/\^/g, '**');
+    try {
+      return Function('"use strict"; return (' + s + ')')();
+    } catch(e) { throw new Error('Syntax'); }
+  }
+
+  return evalExpr(s);
+}
+
+function recompute() {
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++) {
+      try { computed[r][c] = computeCell(r, c, new Set()); }
+      catch(e) { computed[r][c] = '#ERR'; }
+    }
+}
+
+function renderCell(r, c) {
+  const span = cells[r][c].querySelector('.disp');
+  if (!span) return;
+  const v = computed[r][c];
+  if (v === '' || v === null || v === undefined) { span.textContent = ''; span.className = 'disp'; return; }
+  const isErr = typeof v === 'string' && v.startsWith('#');
+  const isText = typeof v === 'string' && !isErr;
+  span.className = 'disp' + (isErr ? ' err' : isText ? ' txt' : '');
+  if (typeof v === 'number') {
+    span.textContent = Number.isInteger(v) ? v : parseFloat(v.toPrecision(10)).toString();
+  } else { span.textContent = String(v); }
+}
+
+function renderAll() {
+  recompute();
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      renderCell(r, c);
+  updateStatus();
+}
+
+function renderSelection() {
+  const [r1, c1] = selMin(), [r2, c2] = selMax();
+  for (let r = 0; r < ROWS; r++) {
+    document.getElementById('rh'+r).classList.toggle('sel', r >= r1 && r <= r2);
+    for (let c = 0; c < COLS; c++) {
+      const td = cells[r][c];
+      const isAnchor = r === anchorR && c === anchorC;
+      const isSel = inSel(r, c) && !isAnchor;
+      td.classList.toggle('anchor', isAnchor);
+      td.classList.toggle('insel', isSel);
+    }
+  }
+  for (let c = 0; c < COLS; c++)
+    document.getElementById('ch'+c).classList.toggle('sel', c >= c1 && c <= c2);
+
+  // Update ref display
+  const ref = document.getElementById('selref');
+  if (anchorR === selR && anchorC === selC) ref.textContent = cellId(anchorR, anchorC);
+  else ref.textContent = cellId(Math.min(anchorR,selR), Math.min(anchorC,selC)) + ':' + cellId(Math.max(anchorR,selR), Math.max(anchorC,selC));
+
+  updateStatus();
+  cells[anchorR][anchorC].scrollIntoView({block: 'nearest', inline: 'nearest'});
+}
+
+function updateStatus() {
+  const [r1, c1] = selMin(), [r2, c2] = selMax();
+  const nums = [];
+  for (let r = r1; r <= r2; r++)
+    for (let c = c1; c <= c2; c++) {
+      const v = getNumVal(r, c);
+      if (v !== null) nums.push(v);
+    }
+  const sb = document.getElementById('statusbar');
+  const empty = document.getElementById('stat-empty');
+  if (nums.length === 0) {
+    sb.innerHTML = '<div id="stat-empty">Select cells with numbers to see statistics</div>';
+    return;
+  }
+  const sum = nums.reduce((a,b)=>a+b,0);
+  const avg = sum / nums.length;
+  const mn = Math.min(...nums), mx = Math.max(...nums);
+  const fmt = v => Number.isInteger(v) ? v : parseFloat(v.toPrecision(8)).toString();
+  sb.innerHTML = `
+    <div class="stat"><b>SUM</b> ${fmt(sum)}</div>
+    <div class="stat"><b>AVG</b> ${fmt(avg)}</div>
+    <div class="stat"><b>COUNT</b> ${nums.length}</div>
+    <div class="stat"><b>MIN</b> ${fmt(mn)}</div>
+    <div class="stat"><b>MAX</b> ${fmt(mx)}</div>
+  `;
+}
+
+function startEdit(init) {
+  if (editing) return;
+  editing = true;
+  const td = cells[anchorR][anchorC];
+  const inp = document.createElement('input');
+  inp.className = 'cedit'; inp.type = 'text';
+  inp.value = init !== undefined ? init : (data[anchorR][anchorC] || '');
+  td.appendChild(inp); editInput = inp;
+  inp.focus();
+  if (init !== undefined) inp.setSelectionRange(inp.value.length, inp.value.length);
+  else inp.select();
+
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commitEdit(); move(1, 0); }
+    else if (e.key === 'Tab') { e.preventDefault(); commitEdit(); move(0, e.shiftKey ? -1 : 1); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+    else if (e.key === 'ArrowUp' && !inp.value.includes('=')) { e.preventDefault(); commitEdit(); move(-1,0); }
+    else if (e.key === 'ArrowDown' && !inp.value.includes('=')) { e.preventDefault(); commitEdit(); move(1,0); }
+  });
+  inp.addEventListener('blur', () => { setTimeout(() => { if (editing) commitEdit(); }, 100); });
+}
+
+function commitEdit() {
+  if (!editing) return;
+  editing = false;
+  const val = editInput ? editInput.value : '';
+  if (editInput && editInput.parentNode) editInput.parentNode.removeChild(editInput);
+  editInput = null;
+  data[anchorR][anchorC] = val;
+  renderAll();
+}
+
+function cancelEdit() {
+  if (!editing) return;
+  editing = false;
+  if (editInput && editInput.parentNode) editInput.parentNode.removeChild(editInput);
+  editInput = null;
+}
+
+function move(dr, dc) {
+  anchorR = Math.max(0, Math.min(ROWS-1, anchorR + dr));
+  anchorC = Math.max(0, Math.min(COLS-1, anchorC + dc));
+  selR = anchorR; selC = anchorC;
+  renderSelection();
+}
+
+function clearSelection() {
+  const [r1, c1] = selMin(), [r2, c2] = selMax();
+  for (let r = r1; r <= r2; r++)
+    for (let c = c1; c <= c2; c++)
+      data[r][c] = '';
+  renderAll();
+}
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (editing) return;
+  if (e.key === 'ArrowUp') { e.preventDefault(); if (e.shiftKey) { selR = Math.max(0, selR-1); renderSelection(); } else move(-1,0); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); if (e.shiftKey) { selR = Math.min(ROWS-1, selR+1); renderSelection(); } else move(1,0); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); if (e.shiftKey) { selC = Math.max(0, selC-1); renderSelection(); } else move(0,-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); if (e.shiftKey) { selC = Math.min(COLS-1, selC+1); renderSelection(); } else move(0,1); }
+  else if (e.key === 'Tab') { e.preventDefault(); move(0, e.shiftKey ? -1 : 1); }
+  else if (e.key === 'Enter') { e.preventDefault(); startEdit(); }
+  else if (e.key === 'F2') { e.preventDefault(); startEdit(); }
+  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); clearSelection(); }
+  else if (e.key === 'Escape') { anchorR=selR=0; anchorC=selC=0; renderSelection(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); copySelection(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); pasteToCell(); }
+  else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) { e.preventDefault(); startEdit(e.key); }
+});
+
+function copySelection() {
+  const [r1, c1] = selMin(), [r2, c2] = selMax();
+  const rows = [];
+  for (let r = r1; r <= r2; r++) {
+    const cols = [];
+    for (let c = c1; c <= c2; c++) {
+      const v = computed[r][c];
+      cols.push(v === '' || v === null ? '' : String(v));
+    }
+    rows.push(cols.join('\t'));
+  }
+  navigator.clipboard.writeText(rows.join('\n')).catch(() => {});
+}
+
+function pasteToCell() {
+  navigator.clipboard.readText().then(text => {
+    const rows = text.split('\n');
+    for (let dr = 0; dr < rows.length; dr++) {
+      const cols = rows[dr].split('\t');
+      for (let dc = 0; dc < cols.length; dc++) {
+        const r = anchorR + dr, c = anchorC + dc;
+        if (r < ROWS && c < COLS) data[r][c] = cols[dc].trim();
+      }
+    }
+    renderAll();
+  }).catch(() => {});
+}
+
+// Clear all
+document.getElementById('clearbtn').addEventListener('click', () => {
+  if (!confirm('Clear all data?')) return;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) data[r][c] = '';
+  renderAll();
+  anchorR=selR=0; anchorC=selC=0;
+  renderSelection();
+});
+
+// Init
+renderSelection();
+renderAll();
+</script>
+</body>
+</html>
